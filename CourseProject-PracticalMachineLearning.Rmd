@@ -25,7 +25,7 @@ set.seed(9999)
 
 
 #####Getting and cleansing data
-We first quickly load data from the URLs provided. I check the data and found out that data has three types of empty data. NA, blank and #DIC/0!. So while reading data into our variables, we cosnider these three types of data as NA. Later ontTHis will help us to clean up further.
+We first quickly load data from the URLs provided. I check the data and found out that data has three types of empty data. NA, blank and #DIC/0!. So while reading data into our variables, we consider these three types of data as NA. Later on this will help us clean up further.
 
 ```{r}
 train_data_url = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
@@ -42,8 +42,12 @@ Now we partition the training set into two sets. 60% for training and 40 % for t
 
 ```{r}
 train_index <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
-training_60pc <- training[train_index, ]; testing_40pc <- training[-train_index, ]
-dim(training_60pc); dim(testing_40pc)
+
+training_60pc <- training[train_index,]
+testing_40pc <- training[-train_index,]
+
+dim(training_60pc)
+dim(testing_40pc)
 ```
 
 In training_60pc set, we now identify all the variables that have zero or near zero variance. These variables will have an undue influence on the model. So we need to remove them from the dataset before we model. There are about 60 columns that we need to remove. Thes columns are defined in a vector. Then take all the columns from training set that are NOT in the vector.
@@ -60,7 +64,7 @@ dim(training_60pc)
 ```
 
 
-Now we a training dataset that does not have near zero variance variables in it. Now we remove the first column od dataset which is an id variable. We do not what this column data to interfere with our Model.
+Now we have a training dataset that does not have near zero variance variables in it. Now we remove the first column of the dataset which is an id variable. We do not what this column data to interfere with our Model.
 ``` {r}
 training_60pc <- training_60pc[c(-1)]
 ```
@@ -69,12 +73,16 @@ Again, to reduce undue influence on our model, we now remove all columns from th
 
 
 ``` {r}
-training_60pc_Temp <- training_60pc #creating another subset to iterate in loop
-for(i in 1:length(training_60pc)) { #for every column in the training dataset
-        if( sum( is.na( training_60pc[, i] ) ) /nrow(training_60pc) >= .6 ) { #if n?? NAs > 60% of total observations
-        for(j in 1:length(training_60pc_Temp)) {
-            if( length( grep(names(training_60pc[i]), names(training_60pc_Temp)[j]) ) ==1)  { #if the columns are the same:
-                training_60pc_Temp <- training_60pc_Temp[ , -j] #Remove that column
+training_60pc_Temp <- training_60pc  
+for(i in 1:length(training_60pc)) 
+{  
+    if( sum( is.na( training_60pc[, i] ) ) /nrow(training_60pc) >= .6 ) 
+    {  
+        for(j in 1:length(training_60pc_Temp)) 
+        {
+            if( length( grep(names(training_60pc[i]), names(training_60pc_Temp)[j]) ) ==1)  
+            {  
+                training_60pc_Temp <- training_60pc_Temp[ , -j] 
             }   
         } 
     }
@@ -91,16 +99,14 @@ rm(training_60pc_Temp)
 Take the selected column from the cleaned training dataset and select only those columns from the test dataset.
 
 ``` {r}
-clean1 <- colnames(training_60pc)
-clean2 <- colnames(training_60pc[, -58]) #already with classe column removed
-testing_40pc <- testing_40pc[clean1]
+training_cols <- colnames(training_60pc)
+training_cols_without_last <- colnames(training_60pc[, -58])  
+testing_40pc <- testing_40pc[training_cols]
 
-
-#To check the new N?? of observations
 dim(testing_40pc)
 
-#Do the same thing to our orignial test dataset.
-testing <- testing[clean2]
+#Do the same cleanung with our orignial test dataset
+testing <- testing[training_cols_without_last]
 dim(testing)
 ```
 
@@ -127,14 +133,17 @@ Here is the order in which we will build, test and apply the model.
 In order to ensure proper functioning of RandomForest Algorithm with the Test data set provided, we need to Set the class of all columns of test dataset the same as out training dataset.
 
 ``` {r}
-for (i in 1:length(testing) ) {
-        for(j in 1:length(training_60pc)) {
-        if( length( grep(names(training_60pc[i]), names(testing)[j]) ) ==1)  {
+for (i in 1:length(testing) ) 
+{
+    for(j in 1:length(training_60pc)) 
+    {
+        if( length( grep(names(training_60pc[i]), names(testing)[j]) ) ==1)  
+        {
             class(testing[j]) <- class(training_60pc[i])
         }       
     }      
 }
-testing <- rbind(training_60pc[2, -58] , testing) #note row 2 does not mean anything, this will be removed right.. now:
+testing <- rbind(training_60pc[2, -58] , testing)  
 testing <- testing[-1,]
 
 ```
