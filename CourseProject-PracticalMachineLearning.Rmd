@@ -1,0 +1,178 @@
+---
+output: html_document
+---
+### Course Project: Practical Machine Learning
+ **`r date()`**
+
+#####Executive Summary
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention in the past few years. A systematic set of data has been collected on a group of healthy individuals while doing various physical exercise while they were wearing wearable accelerometers.
+
+The goal of this project is to develop a model to predict the manner in which they did the exercise.
+
+
+Assignment asked use to use pick any variable to predict but recommended using "classe" variable in the training set. So I will be using the "classe" variable in analysis and prediction.
+
+
+#####Loading necessary R libraries needed to develop te model.
+```{r}
+suppressWarnings(suppressPackageStartupMessages(library(caret)))
+suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+suppressWarnings(suppressPackageStartupMessages(library(randomForest)))
+setwd("D:/Workspace/R/Coursera/PracticalMachineLearning")
+
+set.seed(9999)
+```
+
+
+#####Getting and cleansing data
+We first quickly load data from the URLs provided. I check the data and found out that data has three types of empty data. NA, blank and #DIC/0!. So while reading data into our variables, we cosnider these three types of data as NA. Later ontTHis will help us to clean up further.
+
+```{r}
+train_data_url = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_data_url = "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(train_data_url), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(test_data_url), na.strings=c("NA","#DIV/0!",""))
+
+
+dim(training)
+dim(testing)
+```
+Now we partition the training set into two sets. 60% for training and 40 % for testing.
+
+```{r}
+train_index <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+training_60pc <- training[train_index, ]; testing_40pc <- training[-train_index, ]
+dim(training_60pc); dim(testing_40pc)
+```
+
+In training_60pc set, we now identify all the variables that have zero or near zero variance. These variables will have an undue influence on the model. So we need to remove them from the dataset before we model. There are about 60 columns that we need to remove. Thes columns are defined in a vector. Then take all the columns from training set that are NOT in the vector.
+
+Since this data is widely used, I got the list of non zero variance variables from the internet. 
+```{r}
+
+near_zero_variance_variables <- names(training_60pc) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt", "kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt", "max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm", "var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm", "stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm", "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm", "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm", "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell", "skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm", "amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm", "stddev_yaw_forearm", "var_yaw_forearm")
+
+training_60pc <- training_60pc[!near_zero_variance_variables ]
+
+dim(training_60pc)
+
+```
+
+
+Now we a training dataset that does not have near zero variance variables in it. Now we remove the first column od dataset which is an id variable. We do not what this column data to interfere with our Model.
+``` {r}
+training_60pc <- training_60pc[c(-1)]
+```
+
+Again, to reduce undue influence on our model, we now remove all columns from the dataset that have more than 60% of the data missing. That is variables that have NA as data.
+
+
+``` {r}
+training_60pc_Temp <- training_60pc #creating another subset to iterate in loop
+for(i in 1:length(training_60pc)) { #for every column in the training dataset
+        if( sum( is.na( training_60pc[, i] ) ) /nrow(training_60pc) >= .6 ) { #if n?? NAs > 60% of total observations
+        for(j in 1:length(training_60pc_Temp)) {
+            if( length( grep(names(training_60pc[i]), names(training_60pc_Temp)[j]) ) ==1)  { #if the columns are the same:
+                training_60pc_Temp <- training_60pc_Temp[ , -j] #Remove that column
+            }   
+        } 
+    }
+}
+
+# Check the dimensions of new cleaned dataset
+dim(training_60pc_Temp)
+
+#Set the dataset o original variable and remove the new variable
+training_60pc <- training_60pc_Temp
+rm(training_60pc_Temp)
+```
+
+Take the selected column from the cleaned training dataset and select only those columns from the test dataset.
+
+``` {r}
+clean1 <- colnames(training_60pc)
+clean2 <- colnames(training_60pc[, -58]) #already with classe column removed
+testing_40pc <- testing_40pc[clean1]
+
+
+#To check the new N?? of observations
+dim(testing_40pc)
+
+#Do the same thing to our orignial test dataset.
+testing <- testing[clean2]
+dim(testing)
+```
+
+
+#####Model Building 
+
+We are going to use RandomForest Algorithm to create our model. 
+
+We have three cleaned data sets at this point. 
+1. 60% of original training data set given to us. (In variable myTrainig)
+2. 40% of original training data set given to us. (In variable testing_40pc)
+3. 100% of original testing data given to us. (In variable testing)
+
+
+Here is the order in which we will build, test and apply the model.
+
+1. We will first build a model with training_60pc dataset.
+2. We then we use that model to test on testing_40pc dataset.
+3. We then check the accuracy of our model using confusion matix.
+4. If we are ok with he accuray, we then apply that model on the original testing dataset.
+5. We then will create the 20 files needed to uploaded for automated grading.
+
+
+In order to ensure proper functioning of RandomForest Algorithm with the Test data set provided, we need to Set the class of all columns of test dataset the same as out training dataset.
+
+``` {r}
+for (i in 1:length(testing) ) {
+        for(j in 1:length(training_60pc)) {
+        if( length( grep(names(training_60pc[i]), names(testing)[j]) ) ==1)  {
+            class(testing[j]) <- class(training_60pc[i])
+        }       
+    }      
+}
+testing <- rbind(training_60pc[2, -58] , testing) #note row 2 does not mean anything, this will be removed right.. now:
+testing <- testing[-1,]
+
+```
+
+Now we create a model for predictions. We then predict using that model. Then we use confusion matrix to test the results of prediction.
+
+``` {r}
+myModel <- randomForest(classe ~. , data=training_60pc)
+```
+
+#####Cross Validation and checking accuracy
+
+Now we apply the model on our 40 percent testing data. 
+
+``` {r}
+myPrediction <- predict(myModel, testing_40pc, type = "class")
+```
+
+Now we check accuracy of the  model using confusion matrix on the prediction we just did. 
+``` {r}
+confusionMatrix(myPrediction, testing_40pc$classe)
+```
+
+Checking the results of confusion Matrix we see that we get high accuracy of our model when we applied that to 40% the original training data. So now we can apply that model to the original testing data and create the 20 files needed to upload to 
+
+
+#####Apply Model to 20 test cases and producing files for grading
+ 
+``` {r}
+testPrediction <- predict(myModel, testing, type = "class")
+
+lng= length (testPrediction)
+
+for (file_no in 1:lng)
+{
+    filename = paste0("predict_output_", file_no, ".txt")
+    write.table(testPrediction[file_no], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+}
+
+
+```
